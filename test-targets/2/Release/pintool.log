@@ -1,0 +1,3 @@
+Pin 3.2 kit 81201
+A:  Source\pin\pin\image.cpp: LEVEL_PINCLIENT::INS_DirectBranchOrCallTargetAddress: 2305: assertion failed: INS_IsDirectBranchOrCall(ins)
+
