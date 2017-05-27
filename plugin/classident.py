@@ -37,23 +37,21 @@ class ThisfForm_t(PluginForm):
 
     def PopulateTree(self):
         self.tree.clear()
-        for c in constrFuncs:
-            functions = constrFuncs[c]
+        for cname, funcs in nameFuncs.iteritems():
             root = QtGui.QTreeWidgetItem(self.tree)
-            className = constrName[c][0] if rttiEnabled else ('Class_'+EAFORMAT) % (c+img_base)
-            root.setText(0, className)
-            # print '0x%x'%funs[0]
-            for fun in functions:
+            root.setText(0, cname)
+            for fun in funcs:
+                faddr = fun[0]
+                fisconstr = fun[1]
                 f = QtGui.QTreeWidgetItem(root)
-                fun += img_base
-                label = EAFORMAT % fun
-                demangleName = Demangle(GetFunctionName(fun), INF_SHORT_DN)
+                label = EAFORMAT % faddr
+                demangleName = Demangle(GetFunctionName(faddr), INF_SHORT_DN)
                 if demangleName:
                     label += ' - %s' % demangleName
-                elif c + img_base == fun:
-                    label += ' - %s::%s()' % (className,className)
+                if fisconstr:
+                    label += ' (CONSTRUCTOR)'
                 f.setText(0, label)
-                f.pointer = fun
+                f.pointer = faddr
 
 
     def OnCreate(self, form):
@@ -118,20 +116,19 @@ def static():
     if rttiEnabled:
         for c in rtti.classVFuncDict:
             virtualFunctions = virtualFunctions.union(rtti.classVFuncDict[c])
-
-    # name-vftable list
-    # TODO
+    funcs = funcs.union(virtualFunctions)
+    if len(funcs) == 0:
+        msg("Error: nothing found")
+        exit(2)
 
     img_base = get_imagebase()
     # write to input file for pintool
     with open(INFILE_PATH, 'wb') as f:
         for func in funcs:
-            print '\t%s(0x%x)' % (Demangle(GetFunctionName(func), INF_SHORT_DN), func)
             fmt = 'Q'
             if not __EA64__:
                 fmt = 'L'
             f.write(struct.pack(fmt, func - img_base))
-
 
 def init():
     global __EA64__
@@ -146,10 +143,8 @@ def init():
     EAFORMAT = "%X"
     #EAFORMAT = "%08X" if not __EA64__ else "%016X"
 
-
 def analys():
-    global constrFuncs
-    global constrName
+    global nameFuncs
 
     # Load PIN output
     objectRecords = set()
@@ -157,11 +152,11 @@ def analys():
     blck_size = 4 * 3 if not __EA64__ else 8*3
 
     seg = get_segm_by_name('.rdata')
-    rdataStart = seg.startEA - img_base
-    rdataEnd = seg.endEA - img_base
+    rdataStart = seg.startEA
+    rdataEnd = seg.endEA
     seg = get_segm_by_name('.data')
-    dataStart = seg.startEA - img_base
-    dataEnd = seg.endEA - img_base
+    dataStart = seg.startEA
+    dataEnd = seg.endEA
 
     # Loading
     objConstr = {}
@@ -177,11 +172,17 @@ def analys():
             else:
                 rec = struct.unpack('QQQ', rec)
             obj, vft, fun = rec
+            vft += img_base
+            fun += img_base
+
+            fu = get_func(fun)
+            if fu:
+                if fu.startEA != fun:
+                    continue
 
             if rttiEnabled:
                 # check vftable
-                if vft != 0:
-                    if not ((vft >= dataStart and vft < dataEnd) or (vft >= rdataStart and vft < rdataEnd)):
+                if vft <= img_base or  not ((vft >= dataStart and vft < dataEnd) or (vft >= rdataStart and vft < rdataEnd)):
                         vft = 0
             # check function (VERY SLOW!!)
             # if fun not in virtualFunctions:
@@ -189,18 +190,50 @@ def analys():
             #        continue
             #print '%x' % fun
             if not objConstr.has_key(obj):
-                objConstr[obj] = fun
-                if rttiEnabled:
-                    constrName[fun] = (('Class_'+EAFORMAT) % (fun + img_base), False)
-                constrFuncs[fun] = set([fun])
+                constr = fun
+                objConstr[obj] = constr
+                if vft != 0:
+                    if not constrName.has_key(fun):
+                        name = rtti.getPlainTypeNameByVft(vft)
+                        constrName[constr] = (name, True) if name else (('Class_'+EAFORMAT) % constr, False)
+                else:
+                    constrName[constr] = (('Class_'+EAFORMAT) % constr, False)
+                if not constrFuncs.has_key(constr):
+                    constrFuncs[constr] = set([(constr, True)])
             else:
                 constr = objConstr[obj]
                 if rttiEnabled:
                     if not constrName[constr][1]:
-                        name = rtti.getPlainTypeNameByVft(vft + img_base) if vft != 0 else None
+                        name = rtti.getPlainTypeNameByVft(vft) if vft != 0 else None
                         if name:
                             constrName[constr] = (name, True)
-                constrFuncs[constr].add(fun)
+                if (fun, True) not in constrFuncs[constr]:
+                    constrFuncs[constr].add((fun, False))
+
+    nameFuncs = {}
+    for constr in constrName:
+        name = constrName[constr][0]
+        if constrName[constr][1]:
+            if not nameFuncs.has_key(name):
+                nameFuncs[name] = constrFuncs[constr]
+            else:
+                nameFuncs[name] = nameFuncs[name].union(constrFuncs[constr])
+                constrs = set([f[0] for f in nameFuncs[name] if f[1]])
+                notconstrs = set([f[0] for f in nameFuncs[name] if not f[1]])
+                fakes = constrs.intersection(notconstrs)
+                for f in fakes:
+                    nameFuncs[name].remove((f, True))
+        else:
+            nameFuncs[name] = constrFuncs[constr]
+
+    #if rttiEnabled:
+    #    for name, funcs in rtti.classVFuncDict.iteritems():
+    #        funcs = set([(f, False) for f in funcs])
+    #        if not nameFuncs.has_key(name):
+    #            nameFuncs[name] = funcs
+    #        else:
+    #            nameFuncs[name] = nameFuncs[name].union(funcs)
+
 
 def main():
     global rtti
@@ -215,12 +248,9 @@ def main():
     init()
     static()
 
-    if not __EA64__:
-        print RUN32
-        subprocess.check_call(RUN32)
-    else:
-        print RUN64
-        subprocess.check_call(RUN64)
+    runcmd =  RUN32 if not __EA64__ else RUN64
+    subprocess.check_call(runcmd)
+
     analys()
     try:
         del ThisfForm

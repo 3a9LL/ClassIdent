@@ -2,7 +2,7 @@ from idc import *
 from idaapi import *
 from idautils import *
 
-CALL_OPTYPES = [o_displ, o_phrase, o_reg, 2]
+CALL_OPTYPES = [o_displ, o_phrase, o_reg, 2, o_near]
 
 def fixFunction(ea):
     flags = get_flags_novalue(ea)
@@ -65,7 +65,8 @@ def findThisFuncByCall():
     for seg_ea in Segments():
        for head in Heads(seg_ea, SegEnd(seg_ea)):
             if isThisCall(head):
-                if GetOpType(head, 0) in CALL_OPTYPES:
+                optype = GetOpType(head, 0)
+                if optype != o_near:
                     #print 'V %08x' % (head)
                     virtCalls.add(head)
                 else:

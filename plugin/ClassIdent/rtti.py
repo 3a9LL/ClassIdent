@@ -33,7 +33,7 @@ colList = []
 colMap = {}
 
 classVFuncDict = {}
-classVFtable = {}
+#classVFtable = {}
 
 # ============ STRUCTURES =============================
 class PMD:
@@ -331,6 +331,7 @@ def getPlainTypeNameByVft(vft):
         td = colBase + tdOffset
     colName = getTypeName(td)
     demangledColName = getPlainTypeName(colName)
+    print '%x - %s' % (vft, demangledColName)
     return demangledColName
 
 def getVerify32(ea):
@@ -514,7 +515,6 @@ def getTypeName(td):
 
 def getPlainTypeName(col):
     dname = None
-    print "'%s'" % col
     if col[0]=='.':
         dname = __unDName(col[1:], (UNDNAME_32_BIT_DECODE | UNDNAME_TYPE_ONLY | UNDNAME_NO_ECSU))
         if not dname:
@@ -729,9 +729,9 @@ def processVftable(vft, col):
             #if not hasAnteriorComment(cmtPtr):
             delete_extra_cmts(cmtPtr, E_PREV)
             describe(cmtPtr, True, '\n; %s %s'%(("class" if (colName[3] == 'V') else "struct"), cmt))
-            if not classVFtable.has_key(demangledColName):
-                classVFtable[demangledColName] = []
-            classVFtable[demangledColName].append(vi.start)
+            #if not classVFtable.has_key(demangledColName):
+            #    classVFtable[demangledColName] = []
+            #classVFtable[demangledColName].append(vi.start)
             processMembers(demangledColName, vi)
     else:
         try:
@@ -826,9 +826,9 @@ def findVftables():
 
 def getRTTIData():
     global classVFuncDict
-    global classVFtable
+    #global classVFtable
     classVFuncDict = {}
-    classVFtable = {}
+    #classVFtable = {}
     msg("Scanning for RTTI Complete Object Locator.\n")
     findCols()
     #    return True

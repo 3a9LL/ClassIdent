@@ -2,10 +2,6 @@ from idc import *
 from idaapi import *
 from idautils import *
 
-import subprocess
-import re
-from collections import namedtuple
-from PySide import QtGui, QtCore
 
 DBG = False
 
@@ -21,8 +17,9 @@ def isCall(cur):
 
 # Amnalysis states
 class AS:
-    START = 0
-    PUSHED = 1
+    ECX_ONLY = 0
+    PUSHED_ECX = 1
+    PUSHED_ONLY = 2
 
 def isThisFunc(func):
     global DBG
@@ -50,37 +47,49 @@ def isThisFunc(func):
     flags = GetFunctionFlags(func)
     if flags & (FUNC_THUNK):
         return False
-    state = AS.START
+    state = AS.ECX_ONLY
     for cur in FuncItems(func):
         if DBG: print GetDisasm(cur)
         if isJump(cur) or isCall(cur):
             break
-        if state == AS.START:
+        if state == AS.ECX_ONLY:
             if isEcxChange(cur):
                 break
             elif isToLocReg(cur):
                 return True
             # push
             elif isPush(cur):
-                state = AS.PUSHED
+                state = AS.PUSHED_ECX
                 pushLevel = 1
             # use cx
             elif isEcxUse(cur):
                 return True
-        elif state == AS.PUSHED:
+        elif state == AS.PUSHED_ECX:
             if GetMnem(cur) == 'push':
                 pushLevel += 1
             elif GetMnem(cur) == 'pop':
                 pushLevel -= 1
                 if pushLevel==0:
                     if GetOpnd(cur,0) in ['ecx', 'rcx']:
-                        state = AS.START
+                        state = AS.ECX_ONLY
                     else:
                         break
             elif isToLocReg(cur):
                 return True
             elif isEcxUse(cur):
                 return True
+            elif isEcxChange(cur):
+                state = AS.PUSHED_ONLY
+        elif state == AS.PUSHED_ONLY:
+            if GetMnem(cur) == 'push':
+                pushLevel += 1
+            elif GetMnem(cur) == 'pop':
+                pushLevel -= 1
+                if pushLevel==0:
+                    if GetOpnd(cur,0) in ['ecx', 'rcx']:
+                        state = AS.ECX_ONLY
+                    else:
+                        break
     return False
 
 
