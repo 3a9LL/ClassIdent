@@ -4,4 +4,7 @@ Class Identifier (ClassIdent) - IDAPython plugin for retrieving class functions 
 For x86/x64 PE executables (now only for MSVC).
 
 ## Installation
+Install Python27
+python -m pip install PySide
+python -m pip install ctypes
 Copy from plugin to IDA Plugins folder.
